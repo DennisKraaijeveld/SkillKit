@@ -1,0 +1,9 @@
+/target
+**/*.rs.bk
+.DS_Store
+*.swp
+macos/SkillKit.xcodeproj/
+macos/Skillbook.xcodeproj/
+macos/*.xcworkspace/
+macos/**/xcuserdata/
+macos/**/*.xcuserstate

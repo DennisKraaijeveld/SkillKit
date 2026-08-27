@@ -1,0 +1,58 @@
+{
+  "schemaVersion": 1,
+  "recordedAt": "2026-08-27",
+  "environment": {
+    "modelIdentifier": "Mac17,2",
+    "chip": "Apple M5",
+    "architecture": "arm64",
+    "macOSBuild": "25F84",
+    "xcodeBuild": "17F113",
+    "configuration": "Performance",
+    "runs": 3,
+    "iterationsPerRun": 5
+  },
+  "tests": {
+    "PerformanceTests/testMarkdownParsingPerformance()": {
+      "com.apple.dt.XCTMetric_Clock.time.monotonic": {
+        "baselineAverage": 0.0355105838,
+        "maxPercentRegression": 15,
+        "unit": "s"
+      },
+      "com.apple.dt.XCTMetric_CPU.instructions_retired": {
+        "baselineAverage": 789450.8032,
+        "maxPercentRegression": 5,
+        "unit": "kI"
+      },
+      "com.apple.dt.XCTMetric_Memory.physical_peak": {
+        "baselineAverage": 17669.1536,
+        "maxPercentRegression": 10,
+        "unit": "kB"
+      }
+    },
+    "PerformanceTests/testSidebarProjectionPerformance()": {
+      "com.apple.dt.XCTMetric_Clock.time.monotonic": {
+        "baselineAverage": 0.0022610024,
+        "maxPercentRegression": 20,
+        "unit": "s"
+      },
+      "com.apple.dt.XCTMetric_CPU.instructions_retired": {
+        "baselineAverage": 53142.0521,
+        "maxPercentRegression": 5,
+        "unit": "kI"
+      }
+    }
+  },
+  "profiles": {
+    "postLaunchIdleTimeProfiler": {
+      "durationSeconds": 10.678131,
+      "sampleIntervalMilliseconds": 1,
+      "runningSamples": 4,
+      "sampledCpuPercent": 0.0375,
+      "appSpecificHotStack": false
+    }
+  },
+  "informationalMetrics": [
+    "Memory physical deltas were quantized and had 23-36% relative standard deviation.",
+    "Sidebar peak physical memory included process startup and build warm-up variance."
+  ]
+}

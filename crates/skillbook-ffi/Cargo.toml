@@ -1,0 +1,23 @@
+[package]
+name = "skillbook-ffi"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "UniFFI session API for the SkillKit SwiftUI app."
+
+[lib]
+name = "skillbook_ffi"
+crate-type = ["lib", "cdylib", "staticlib"]
+
+[[bin]]
+name = "uniffi-bindgen"
+path = "src/bin/uniffi-bindgen.rs"
+
+[dependencies]
+skillbook-core = { path = "../skillbook-core" }
+thiserror = "2"
+uniffi = { version = "0.32", features = ["cli"] }
+
+[dev-dependencies]
+tempfile = "3"

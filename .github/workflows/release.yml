@@ -1,0 +1,262 @@
+name: Release SkillKit
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  SPARKLE_VERSION: "2.9.4"
+
+jobs:
+  release:
+    name: Build, notarize, and publish
+    runs-on: macos-26
+    timeout-minutes: 60
+
+    steps:
+      - name: Check out the tagged source
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Validate the release tag
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ ! "$GITHUB_REF_NAME" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "Release tags must use vMAJOR.MINOR.PATCH." >&2
+            exit 1
+          fi
+          version="${GITHUB_REF_NAME#v}"
+          echo "VERSION=$version" >> "$GITHUB_ENV"
+          echo "ARCHIVE_PATH=$RUNNER_TEMP/SkillKit.xcarchive" >> "$GITHUB_ENV"
+          echo "APP_PATH=$RUNNER_TEMP/SkillKit.xcarchive/Products/Applications/SkillKit.app" >> "$GITHUB_ENV"
+          echo "RELEASE_DIR=$RUNNER_TEMP/skillkit-release" >> "$GITHUB_ENV"
+
+      - name: Install build tools
+        shell: bash
+        run: |
+          set -euo pipefail
+          brew install xcodegen
+          rustup toolchain install stable --profile minimal
+          rustup default stable
+          xcodebuild -version
+          rustc --version
+
+      - name: Download Sparkle release tools
+        shell: bash
+        run: |
+          set -euo pipefail
+          archive="$RUNNER_TEMP/Sparkle-$SPARKLE_VERSION.tar.xz"
+          curl --fail --location --silent --show-error \
+            "https://github.com/sparkle-project/Sparkle/releases/download/$SPARKLE_VERSION/Sparkle-$SPARKLE_VERSION.tar.xz" \
+            --output "$archive"
+          mkdir -p "$RUNNER_TEMP/Sparkle"
+          tar -xJf "$archive" -C "$RUNNER_TEMP/Sparkle"
+          echo "SPARKLE_TOOLS=$RUNNER_TEMP/Sparkle/bin" >> "$GITHUB_ENV"
+
+      - name: Configure Developer ID signing
+        shell: bash
+        env:
+          APPLE_CERTIFICATE_BASE64: ${{ secrets.APPLE_CERTIFICATE_BASE64 }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}
+        run: |
+          set -euo pipefail
+          : "${APPLE_CERTIFICATE_BASE64:?APPLE_CERTIFICATE_BASE64 is required}"
+          : "${APPLE_CERTIFICATE_PASSWORD:?APPLE_CERTIFICATE_PASSWORD is required}"
+          : "${KEYCHAIN_PASSWORD:?KEYCHAIN_PASSWORD is required}"
+
+          certificate_path="$RUNNER_TEMP/developer-id.p12"
+          keychain_path="$RUNNER_TEMP/skillkit-signing.keychain-db"
+          echo "KEYCHAIN_PATH=$keychain_path" >> "$GITHUB_ENV"
+          printf '%s' "$APPLE_CERTIFICATE_BASE64" | base64 -D > "$certificate_path"
+
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$keychain_path"
+          security set-keychain-settings -lut 21600 "$keychain_path"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$keychain_path"
+          security import "$certificate_path" \
+            -k "$keychain_path" \
+            -P "$APPLE_CERTIFICATE_PASSWORD" \
+            -A \
+            -T /usr/bin/codesign
+          security set-key-partition-list \
+            -S apple-tool:,apple: \
+            -s \
+            -k "$KEYCHAIN_PASSWORD" \
+            "$keychain_path"
+          security list-keychains -d user -s "$keychain_path"
+
+          signing_identity="$(security find-identity -v -p codesigning "$keychain_path" | awk -F '"' '/Developer ID Application/ { print $2; exit }')"
+          if [[ -z "$signing_identity" ]]; then
+            echo "The imported certificate does not contain a Developer ID Application identity." >&2
+            exit 1
+          fi
+          echo "SIGNING_IDENTITY=$signing_identity" >> "$GITHUB_ENV"
+
+      - name: Derive the Sparkle public key
+        shell: bash
+        env:
+          SPARKLE_PRIVATE_KEY: ${{ secrets.SPARKLE_PRIVATE_KEY }}
+        run: |
+          set -euo pipefail
+          : "${SPARKLE_PRIVATE_KEY:?SPARKLE_PRIVATE_KEY is required}"
+          public_key="$(swift -e '
+            import CryptoKit
+            import Foundation
+            let environment = ProcessInfo.processInfo.environment
+            guard let encoded = environment["SPARKLE_PRIVATE_KEY"],
+                  let seed = Data(base64Encoded: encoded) else {
+                fatalError("SPARKLE_PRIVATE_KEY must be base64 encoded")
+            }
+            let privateKey = try Curve25519.Signing.PrivateKey(rawRepresentation: seed)
+            print(privateKey.publicKey.rawRepresentation.base64EncodedString())
+          ')"
+          echo "SPARKLE_PUBLIC_ED_KEY=$public_key" >> "$GITHUB_ENV"
+
+      - name: Generate the Xcode project
+        working-directory: macos
+        run: xcodegen generate
+
+      - name: Archive the universal app
+        working-directory: macos
+        shell: bash
+        env:
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          set -euo pipefail
+          : "${APPLE_TEAM_ID:?APPLE_TEAM_ID is required}"
+          xcodebuild \
+            -project SkillKit.xcodeproj \
+            -scheme SkillKit \
+            -configuration Release \
+            -destination 'generic/platform=macOS' \
+            -archivePath "$ARCHIVE_PATH" \
+            archive \
+            ARCHS='arm64 x86_64' \
+            ONLY_ACTIVE_ARCH=NO \
+            MARKETING_VERSION="$VERSION" \
+            CURRENT_PROJECT_VERSION="$GITHUB_RUN_NUMBER" \
+            SPARKLE_PUBLIC_ED_KEY="$SPARKLE_PUBLIC_ED_KEY" \
+            DEVELOPMENT_TEAM="$APPLE_TEAM_ID" \
+            CODE_SIGN_STYLE=Manual \
+            CODE_SIGN_IDENTITY="$SIGNING_IDENTITY"
+
+      - name: Verify the archive
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -d "$APP_PATH"
+          embedded_key="$(plutil -extract SUPublicEDKey raw -o - "$APP_PATH/Contents/Info.plist")"
+          if [[ "$embedded_key" != "$SPARKLE_PUBLIC_ED_KEY" ]]; then
+            echo "The app contains the wrong Sparkle public key." >&2
+            exit 1
+          fi
+          if [[ "$(plutil -extract SURequireSignedFeed raw -o - "$APP_PATH/Contents/Info.plist")" != "true" ]]; then
+            echo "Signed appcast verification is not enabled." >&2
+            exit 1
+          fi
+          app_architectures="$(lipo -archs "$APP_PATH/Contents/MacOS/SkillKit")"
+          [[ "$app_architectures" == *arm64* && "$app_architectures" == *x86_64* ]]
+          codesign --verify --deep --strict --verbose=2 "$APP_PATH"
+
+      - name: Notarize and staple the app
+        shell: bash
+        env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          set -euo pipefail
+          : "${APPLE_ID:?APPLE_ID is required}"
+          : "${APPLE_APP_SPECIFIC_PASSWORD:?APPLE_APP_SPECIFIC_PASSWORD is required}"
+          : "${APPLE_TEAM_ID:?APPLE_TEAM_ID is required}"
+
+          notarization_archive="$RUNNER_TEMP/SkillKit-$VERSION-notarization.zip"
+          ditto -c -k --keepParent "$APP_PATH" "$notarization_archive"
+          xcrun notarytool submit "$notarization_archive" \
+            --apple-id "$APPLE_ID" \
+            --password "$APPLE_APP_SPECIFIC_PASSWORD" \
+            --team-id "$APPLE_TEAM_ID" \
+            --wait
+          xcrun stapler staple "$APP_PATH"
+          xcrun stapler validate "$APP_PATH"
+          spctl --assess --type execute --verbose=4 "$APP_PATH"
+
+      - name: Generate release notes and the signed appcast
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SPARKLE_PRIVATE_KEY: ${{ secrets.SPARKLE_PRIVATE_KEY }}
+        run: |
+          set -euo pipefail
+          mkdir -p "$RELEASE_DIR"
+          release_archive="$RELEASE_DIR/SkillKit-$VERSION.zip"
+          release_notes="$RELEASE_DIR/SkillKit-$VERSION.md"
+          ditto -c -k --keepParent "$APP_PATH" "$release_archive"
+
+          if ! gh api \
+            --method POST \
+            "repos/$GITHUB_REPOSITORY/releases/generate-notes" \
+            -f tag_name="$GITHUB_REF_NAME" \
+            -f target_commitish="$GITHUB_SHA" \
+            --jq '.body' > "$release_notes"; then
+            : > "$release_notes"
+          fi
+          if [[ ! -s "$release_notes" ]]; then
+            printf '# SkillKit %s\n\nSee the GitHub release for the changes in this version.\n' "$VERSION" > "$release_notes"
+          fi
+
+          printf '%s' "$SPARKLE_PRIVATE_KEY" | "$SPARKLE_TOOLS/generate_appcast" \
+            --ed-key-file - \
+            --download-url-prefix "https://github.com/$GITHUB_REPOSITORY/releases/download/$GITHUB_REF_NAME/" \
+            --embed-release-notes \
+            --link "https://github.com/$GITHUB_REPOSITORY" \
+            --maximum-versions 1 \
+            "$RELEASE_DIR"
+
+          test -s "$RELEASE_DIR/appcast.xml"
+          grep -q 'sparkle:edSignature' "$RELEASE_DIR/appcast.xml"
+          grep -q 'sparkle-signatures:' "$RELEASE_DIR/appcast.xml"
+
+      - name: Publish the GitHub release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          release_archive="$RELEASE_DIR/SkillKit-$VERSION.zip"
+          release_notes="$RELEASE_DIR/SkillKit-$VERSION.md"
+          appcast="$RELEASE_DIR/appcast.xml"
+
+          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            gh release upload "$GITHUB_REF_NAME" "$release_archive" "$appcast" --clobber
+            gh release edit "$GITHUB_REF_NAME" \
+              --title "SkillKit $VERSION" \
+              --notes-file "$release_notes" \
+              --latest
+          else
+            gh release create "$GITHUB_REF_NAME" \
+              "$release_archive" \
+              "$appcast" \
+              --verify-tag \
+              --title "SkillKit $VERSION" \
+              --notes-file "$release_notes" \
+              --latest
+          fi
+
+      - name: Remove the temporary signing keychain
+        if: always()
+        shell: bash
+        run: |
+          if [[ -n "${KEYCHAIN_PATH:-}" && -f "$KEYCHAIN_PATH" ]]; then
+            security delete-keychain "$KEYCHAIN_PATH"
+          fi

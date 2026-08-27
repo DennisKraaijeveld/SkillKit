@@ -1,0 +1,24 @@
+[package]
+name = "skillbook-mcp"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "Local MCP server for inspecting and placing Agent Skills with SkillKit."
+
+[[bin]]
+name = "skillkit-mcp"
+path = "src/main.rs"
+
+[dependencies]
+anyhow.workspace = true
+dirs.workspace = true
+rmcp.workspace = true
+serde.workspace = true
+skillbook-core = { path = "../skillbook-core" }
+tokio.workspace = true
+
+[dev-dependencies]
+rmcp = { workspace = true, features = ["client"] }
+serde_json.workspace = true
+tempfile = "3"
