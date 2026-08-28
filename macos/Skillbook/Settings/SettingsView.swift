@@ -42,9 +42,35 @@ private enum SettingsOperation: Equatable {
     case refreshRuntime
 }
 
-private enum SettingsFolderPurpose: Equatable {
+enum SettingsFolderPurpose: Equatable {
     case project
     case additional
+}
+
+enum SettingsFilePickerPurpose: Equatable {
+    case folder(SettingsFolderPurpose)
+    case executable(RuntimeTool)
+
+    var allowedContentTypes: [UTType] {
+        switch self {
+        case .folder: [.folder]
+        case .executable: [.unixExecutable]
+        }
+    }
+}
+
+struct SettingsFilePickerState {
+    var purpose = SettingsFilePickerPurpose.folder(.project)
+    var isPresented = false
+
+    var allowedContentTypes: [UTType] {
+        purpose.allowedContentTypes
+    }
+
+    mutating func present(_ purpose: SettingsFilePickerPurpose) {
+        self.purpose = purpose
+        isPresented = true
+    }
 }
 
 private struct SettingsFeedback {
@@ -605,12 +631,9 @@ private struct ShortcutsSettingsPane: View {
 
 private struct SourcesSettingsPane: View {
     @Environment(AppModel.self) private var model
-    @State private var pickingFolder = false
-    @State private var folderPurpose = SettingsFolderPurpose.project
+    @State private var filePicker = SettingsFilePickerState()
     @State private var operation: SettingsOperation?
     @State private var feedback: SettingsFeedback?
-    @State private var pickingExecutable = false
-    @State private var executableTool = RuntimeTool.npx
 
     var body: some View {
         Form {
@@ -702,11 +725,11 @@ private struct SourcesSettingsPane: View {
         .scrollContentBackground(.hidden)
         .background(SkillbookTheme.surface(.one))
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .fileImporter(isPresented: $pickingFolder, allowedContentTypes: [.folder]) { result in
-            handlePickedFolder(result, asProjectFolder: folderPurpose == .project)
-        }
-        .fileImporter(isPresented: $pickingExecutable, allowedContentTypes: [.unixExecutable]) { result in
-            handlePickedExecutable(result, tool: executableTool)
+        .fileImporter(
+            isPresented: $filePicker.isPresented,
+            allowedContentTypes: filePicker.allowedContentTypes
+        ) { result in
+            handlePickedFile(result, purpose: filePicker.purpose)
         }
     }
 
@@ -748,8 +771,7 @@ private struct SourcesSettingsPane: View {
                     .disabled(operation != nil)
             }
             Button("Choose…") {
-                executableTool = tool
-                pickingExecutable = true
+                filePicker.present(.executable(tool))
             }
             .disabled(operation != nil)
         }
@@ -757,8 +779,19 @@ private struct SourcesSettingsPane: View {
     }
 
     private func chooseFolder(for purpose: SettingsFolderPurpose) {
-        folderPurpose = purpose
-        pickingFolder = true
+        filePicker.present(.folder(purpose))
+    }
+
+    private func handlePickedFile(
+        _ result: Result<URL, Error>,
+        purpose: SettingsFilePickerPurpose
+    ) {
+        switch purpose {
+        case .folder(let folderPurpose):
+            handlePickedFolder(result, asProjectFolder: folderPurpose == .project)
+        case .executable(let tool):
+            handlePickedExecutable(result, tool: tool)
+        }
     }
 
     private func configuredPath(for tool: RuntimeTool) -> String? {

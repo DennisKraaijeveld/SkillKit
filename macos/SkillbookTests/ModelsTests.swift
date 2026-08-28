@@ -2,6 +2,7 @@ import AppKit
 import Foundation
 import MarkdownEngine
 import Testing
+import UniformTypeIdentifiers
 @testable import Skillbook
 
 @Suite("Swift models")
@@ -83,6 +84,26 @@ struct ModelsTests {
         #expect(navigation.keyboardPath == paths[1])
         #expect(navigation.hoveredPath == nil)
         #expect(navigation.scrollPath == paths[1])
+    }
+
+    @Test("Settings file picker routes every source action through one presentation")
+    func settingsFilePickerRouting() {
+        var picker = SettingsFilePickerState()
+
+        picker.present(.folder(.project))
+        #expect(picker.isPresented)
+        #expect(picker.purpose == .folder(.project))
+        #expect(picker.allowedContentTypes == [.folder])
+
+        picker.present(.folder(.additional))
+        #expect(picker.isPresented)
+        #expect(picker.purpose == .folder(.additional))
+        #expect(picker.allowedContentTypes == [.folder])
+
+        picker.present(.executable(.git))
+        #expect(picker.isPresented)
+        #expect(picker.purpose == .executable(.git))
+        #expect(picker.allowedContentTypes == [.unixExecutable])
     }
 
     @Test("Scope ordering stays stable")
