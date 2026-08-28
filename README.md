@@ -2,6 +2,10 @@
 
 SkillKit is a native macOS app for managing [Agent Skills](https://agentskills.io), the `SKILL.md` packages used by Claude Code, Cursor, OpenCode, Codex, and the rest of the `npx skills` ecosystem. It finds skills across global agent folders and projects beneath your work folders, then gives you one place to read, edit, install, update, and link them.
 
+[![Download SkillKit DMG](https://img.shields.io/badge/Download_SkillKit-DMG-0969da?style=for-the-badge&logo=apple&logoColor=white)](https://github.com/DennisKraaijeveld/SkillKit/releases/latest)
+
+![SkillKit showing the skill library and the Ask Matt skill](docs/screenshots/skillkit-library.png)
+
 ## What it does
 
 - Finds skills in the usual global folders (`~/.agents/skills`, `~/.claude/skills`, `~/.codex/skills`, `~/.cursor/skills`, OpenCode, Gemini, and others), plus any folders you add.
