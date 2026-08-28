@@ -300,7 +300,7 @@ struct SidebarView: View {
     }
 
     private func skillRow(_ item: SidebarSkillItem) -> some View {
-        let displayedSkill = item.copies.first { $0.id == model.selectedId } ?? item.skill
+        let displayedSkill = item.copy(skillId: model.selectedId) ?? item.skill
         let displayedPath = displayedSkill.placements
             .first { !$0.isSymlink }?.path ?? displayedSkill.folder
         return SkillRowView(

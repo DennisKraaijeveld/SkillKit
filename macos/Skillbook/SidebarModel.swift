@@ -3,19 +3,29 @@ import Foundation
 struct SidebarSkillItem: Identifiable, Hashable {
     var id: String
     var skill: SkillRow
-    var copies: [SkillRow]
+    var additionalCopies: [SkillRow]
     var agents: [String]
     var isLinked: Bool
 
-    var copyCount: Int { copies.count }
+    var copyCount: Int { additionalCopies.count + 1 }
 
     var latestModifiedAt: Date? {
-        copies.compactMap(\.modifiedAt).max()
+        var latest = skill.modifiedAt
+        for copy in additionalCopies {
+            guard let modifiedAt = copy.modifiedAt else { continue }
+            latest = max(latest ?? modifiedAt, modifiedAt)
+        }
+        return latest
+    }
+
+    func copy(skillId: String?) -> SkillRow? {
+        guard let skillId else { return nil }
+        if skill.id == skillId { return skill }
+        return additionalCopies.first { $0.id == skillId }
     }
 
     func contains(skillId: String?) -> Bool {
-        guard let skillId else { return false }
-        return copies.contains { $0.id == skillId }
+        copy(skillId: skillId) != nil
     }
 }
 
@@ -95,7 +105,7 @@ enum SidebarTree {
                 let item = SidebarSkillItem(
                     id: "\(location.id)::\(skill.id)",
                     skill: skill,
-                    copies: [skill],
+                    additionalCopies: [],
                     agents: agents,
                     isLinked: links.allSatisfy(\.isSymlink)
                 )
@@ -174,25 +184,36 @@ enum SidebarTree {
         _ items: [SidebarSkillItem],
         locationId: String
     ) -> [SidebarSkillItem] {
-        Dictionary(grouping: items) { item in
-            item.skill.exactDuplicateKey.isEmpty
+        var collapsed: [SidebarSkillItem] = []
+        collapsed.reserveCapacity(items.count)
+        var indexByExactKey: [String: Int] = [:]
+        indexByExactKey.reserveCapacity(items.count)
+
+        for item in items {
+            let exactKey = item.skill.exactDuplicateKey.isEmpty
                 ? "skill:\(item.skill.id)"
                 : item.skill.exactDuplicateKey
+            guard let index = indexByExactKey[exactKey] else {
+                indexByExactKey[exactKey] = collapsed.count
+                collapsed.append(item)
+                continue
+            }
+
+            var existing = collapsed[index]
+            if preferredCopyOrder(item, existing) {
+                existing.additionalCopies.append(existing.skill)
+                existing.skill = item.skill
+            } else {
+                existing.additionalCopies.append(item.skill)
+            }
+            existing.id = "\(locationId)::exact::\(exactKey)"
+            existing.additionalCopies.append(contentsOf: item.additionalCopies)
+            existing.agents = Array(Set(existing.agents).union(item.agents)).sorted()
+            existing.isLinked = existing.isLinked && item.isLinked
+            collapsed[index] = existing
         }
-        .map { exactKey, matchingItems in
-            guard matchingItems.count > 1 else { return matchingItems[0] }
-            let ordered = matchingItems.sorted(by: preferredCopyOrder)
-            let primary = ordered[0]
-            let copies = ordered.flatMap(\.copies)
-            let agents = Array(Set(ordered.flatMap(\.agents))).sorted()
-            return SidebarSkillItem(
-                id: "\(locationId)::exact::\(exactKey)",
-                skill: primary.skill,
-                copies: copies,
-                agents: agents,
-                isLinked: ordered.allSatisfy(\.isLinked)
-            )
-        }
+
+        return collapsed
     }
 
     private static func collections(

@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "recordedAt": "2026-08-27",
+  "recordedAt": "2026-08-28",
   "environment": {
     "modelIdentifier": "Mac17,2",
     "chip": "Apple M5",
@@ -14,29 +14,29 @@
   "tests": {
     "PerformanceTests/testMarkdownParsingPerformance()": {
       "com.apple.dt.XCTMetric_Clock.time.monotonic": {
-        "baselineAverage": 0.0355105838,
+        "baselineAverage": 0.0366395735,
         "maxPercentRegression": 15,
         "unit": "s"
       },
       "com.apple.dt.XCTMetric_CPU.instructions_retired": {
-        "baselineAverage": 789450.8032,
+        "baselineAverage": 789751.4165,
         "maxPercentRegression": 5,
         "unit": "kI"
       },
       "com.apple.dt.XCTMetric_Memory.physical_peak": {
-        "baselineAverage": 17669.1536,
+        "baselineAverage": 17711.76,
         "maxPercentRegression": 10,
         "unit": "kB"
       }
     },
     "PerformanceTests/testSidebarProjectionPerformance()": {
       "com.apple.dt.XCTMetric_Clock.time.monotonic": {
-        "baselineAverage": 0.0022610024,
+        "baselineAverage": 0.0028573693,
         "maxPercentRegression": 20,
         "unit": "s"
       },
       "com.apple.dt.XCTMetric_CPU.instructions_retired": {
-        "baselineAverage": 53142.0521,
+        "baselineAverage": 61957.5169,
         "maxPercentRegression": 5,
         "unit": "kI"
       }

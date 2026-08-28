@@ -548,12 +548,13 @@ struct ModelsTests {
         )]
 
         let model = AppModel(backend: PreviewBackend())
-        model.skills = [shared, identical, drifted]
+        model.skills = [identical, shared, drifted]
         let project = try #require(model.sidebarSections.first?.locations.first)
         let collapsed = try #require(project.skills.first { $0.copyCount == 2 })
 
         #expect(project.skillCount == 2)
         #expect(model.librarySkillCount == 2)
+        #expect(collapsed.skill.id == shared.id)
         #expect(collapsed.agents == ["agents", "claude"])
         #expect(collapsed.contains(skillId: shared.id))
         #expect(collapsed.contains(skillId: identical.id))

@@ -122,6 +122,7 @@ targets:
       - path: Skillbook/SidebarModel.swift
     dependencies:
       - package: Markdown
+      - package: MarkdownEngine
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.denniskraaijeveld.skillkit.performance-tests
