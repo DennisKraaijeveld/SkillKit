@@ -41,8 +41,8 @@ The app verifies the archive before extraction and also requires a signed appcas
 Create and push a stable semantic-version tag:
 
 ```bash
-git tag v0.2.0
-git push origin v0.2.0
+git tag v0.1.0
+git push origin v0.1.0
 ```
 
 `.github/workflows/release.yml` then:
@@ -50,9 +50,12 @@ git push origin v0.2.0
 1. Builds a universal arm64/x86_64 Release archive.
 2. Signs the app and bundled MCP helper with Developer ID.
 3. Submits the app to Apple's notarization service and staples the ticket.
-4. Creates `SkillKit-VERSION.zip` and signs it with the Sparkle key.
-5. Generates a signed `appcast.xml` with embedded release notes.
-6. Publishes both files to the tagged GitHub release.
+4. Creates `SkillKit-VERSION.dmg`, signs it with Developer ID, and notarizes and staples the disk image separately.
+5. Creates `SkillKit-VERSION.zip` and signs it with the Sparkle key.
+6. Generates a signed `appcast.xml` with embedded release notes.
+7. Publishes the DMG, Sparkle ZIP, and appcast to the tagged GitHub release.
+
+The DMG is the manual download to share on the website and social channels. Sparkle continues to use the ZIP so adding the DMG does not create a second update item in the appcast.
 
 Installed apps read the feed from:
 

@@ -196,7 +196,11 @@ if [[ -n "${TARGET_BUILD_DIR:-}" && -n "${CONTENTS_FOLDER_PATH:-}" ]]; then
   chmod 755 "$MCP_DESTINATION"
   if [[ "${CODE_SIGNING_ALLOWED:-YES}" == "YES" ]]; then
     SIGN_IDENTITY="${EXPANDED_CODE_SIGN_IDENTITY:--}"
-    /usr/bin/codesign --force --sign "$SIGN_IDENTITY" --timestamp=none "$MCP_DESTINATION"
+    if [[ "$SIGN_IDENTITY" == "-" ]]; then
+      /usr/bin/codesign --force --sign "$SIGN_IDENTITY" --timestamp=none "$MCP_DESTINATION"
+    else
+      /usr/bin/codesign --force --options runtime --timestamp --sign "$SIGN_IDENTITY" "$MCP_DESTINATION"
+    fi
   fi
   echo "skillkit-mcp embedded: $MCP_DESTINATION ($BUILT_TARGETS $PROFILE_DIR)"
 else
