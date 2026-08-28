@@ -319,6 +319,10 @@ impl Skill {
         }
     }
 
+    pub fn exact_duplicate_key(&self) -> String {
+        format!("{}:{}", self.duplicate_key(), self.content_fingerprint)
+    }
+
     pub fn duplicate_reason(&self) -> &'static str {
         match self.source {
             SkillSource::SkillsCli { .. } => "Same skills.sh source",
@@ -817,6 +821,30 @@ mod tests {
         assert_eq!(first.duplicate_key(), second.duplicate_key());
         assert_ne!(first.duplicate_key(), different.duplicate_key());
         assert_eq!(first.duplicate_reason(), "Identical skill contents");
+    }
+
+    #[test]
+    fn exact_duplicate_identity_rejects_drifted_source_copies() {
+        use crate::lockfile::LockScope;
+        let mut first = test_skill("a", "Review", Scope::Global, VersionStatus::Unknown);
+        first.source = SkillSource::SkillsCli {
+            source: "Owner/Repo".into(),
+            source_url: None,
+            source_type: "github".into(),
+            skill_path: Some("skills/review/SKILL.md".into()),
+            folder_hash: None,
+            git_ref: None,
+            lock_scope: LockScope::Global,
+        };
+        first.content_fingerprint = "same-content".into();
+        let mut identical = first.clone();
+        identical.id = "b".into();
+        let mut drifted = identical.clone();
+        drifted.content_fingerprint = "different-content".into();
+
+        assert_eq!(first.exact_duplicate_key(), identical.exact_duplicate_key());
+        assert_ne!(first.exact_duplicate_key(), drifted.exact_duplicate_key());
+        assert_eq!(first.duplicate_key(), drifted.duplicate_key());
     }
 
     #[test]

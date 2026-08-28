@@ -45,6 +45,7 @@ final class PerformanceTests: XCTestCase {
                 )
             ],
             duplicateKey: "skills-cli:acme/skill-pack:\(name)",
+            exactDuplicateKey: "skills-cli:acme/skill-pack:\(name):fixture-\(index)",
             duplicateReason: "Same skills.sh source",
             version: index.isMultiple(of: 10) ? .updateAvailable : .upToDate,
             bumpFrom: nil,

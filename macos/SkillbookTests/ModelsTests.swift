@@ -505,6 +505,63 @@ struct ModelsTests {
         #expect(projectLocation.allSkills.contains { $0.skill.name == "shared" } == false)
     }
 
+    @Test("Sidebar collapses exact copies and preserves drifted variants")
+    @MainActor
+    func sidebarExactCopyProjection() throws {
+        let projectRoot = "/Users/demo/Work/product"
+        var shared = sidebarSkill(
+            name: "shared",
+            category: "engineering",
+            placements: [SkillPlacement(
+                agent: "agents",
+                path: "\(projectRoot)/.agents/skills/shared",
+                scope: .project,
+                root: projectRoot,
+                isSymlink: false
+            )],
+            scope: .project
+        )
+        shared.id = "/shared/shared"
+        shared.folder = "/shared/shared"
+
+        var identical = shared
+        identical.id = "/claude/shared"
+        identical.folder = "/claude/shared"
+        identical.placements = [SkillPlacement(
+            agent: "claude",
+            path: "\(projectRoot)/.claude/skills/shared",
+            scope: .project,
+            root: projectRoot,
+            isSymlink: false
+        )]
+
+        var drifted = identical
+        drifted.id = "/cursor/shared"
+        drifted.folder = "/cursor/shared"
+        drifted.exactDuplicateKey += ":drifted"
+        drifted.placements = [SkillPlacement(
+            agent: "cursor",
+            path: "\(projectRoot)/.cursor/skills/shared",
+            scope: .project,
+            root: projectRoot,
+            isSymlink: false
+        )]
+
+        let model = AppModel(backend: PreviewBackend())
+        model.skills = [shared, identical, drifted]
+        let project = try #require(model.sidebarSections.first?.locations.first)
+        let collapsed = try #require(project.skills.first { $0.copyCount == 2 })
+
+        #expect(project.skillCount == 2)
+        #expect(model.librarySkillCount == 2)
+        #expect(collapsed.agents == ["agents", "claude"])
+        #expect(collapsed.contains(skillId: shared.id))
+        #expect(collapsed.contains(skillId: identical.id))
+        #expect(!collapsed.contains(skillId: drifted.id))
+        #expect(Set(model.identicalCopies(of: shared).map(\.id)) == Set([shared.id, identical.id]))
+        #expect(SidebarTree.firstItem(for: identical.id, in: model.sidebarSections)?.id == collapsed.id)
+    }
+
     @Test("Duplicate checker ignores linked placements and finds independent copies")
     @MainActor
     func duplicateGroups() {
@@ -615,6 +672,7 @@ private func sidebarSkill(
         sourceCategory: category,
         placements: placements,
         duplicateKey: "skills-cli:acme/skill-pack:\(name)",
+        exactDuplicateKey: "skills-cli:acme/skill-pack:\(name):fixture",
         duplicateReason: "Same skills.sh source",
         version: .upToDate,
         bumpFrom: nil,

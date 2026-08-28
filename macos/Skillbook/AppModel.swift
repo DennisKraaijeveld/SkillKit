@@ -167,6 +167,27 @@ final class AppModel {
         duplicateGroups.reduce(0) { $0 + max(0, $1.skills.count - 1) }
     }
 
+    var librarySkillCount: Int {
+        fullSidebarSections.reduce(0) { $0 + $1.skillCount }
+    }
+
+    var visibleSkillCount: Int {
+        sidebarSections.reduce(0) { $0 + $1.skillCount }
+    }
+
+    func identicalCopies(of skill: SkillRow) -> [SkillRow] {
+        guard !skill.exactDuplicateKey.isEmpty else { return [skill] }
+        return skills
+            .filter { $0.exactDuplicateKey == skill.exactDuplicateKey }
+            .sorted { lhs, rhs in
+                let lhsSelected = lhs.id == selectedId
+                let rhsSelected = rhs.id == selectedId
+                if lhsSelected != rhsSelected { return lhsSelected }
+                if lhs.scope != rhs.scope { return lhs.scope < rhs.scope }
+                return lhs.folder < rhs.folder
+            }
+    }
+
     /// Short sidebar copy for the library-wide update review control.
     var updateStatusLabel: String? {
         let n = availableUpdateCount
@@ -242,7 +263,7 @@ final class AppModel {
 
     func selectSidebar(_ id: String) {
         guard let item = SidebarTree.item(id: id, in: sidebarSections) else { return }
-        if item.skill.id == selectedId {
+        if item.contains(skillId: selectedId) {
             sidebarSelectedId = id
             return
         }
@@ -953,7 +974,7 @@ final class AppModel {
             }
             loadSelected(force: false)
         } else if let sidebarSelectedId,
-                  SidebarTree.item(id: sidebarSelectedId, in: fullSidebar)?.skill.id != selectedId
+                  SidebarTree.item(id: sidebarSelectedId, in: fullSidebar)?.contains(skillId: selectedId) != true
         {
             self.sidebarSelectedId = selectedId.flatMap {
                 SidebarTree.firstItem(for: $0, in: fullSidebar)?.id

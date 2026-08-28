@@ -65,6 +65,7 @@ extension SkillRow {
             sourceCategory: row.sourceCategory,
             placements: row.placements.map(SkillPlacement.init),
             duplicateKey: row.duplicateKey,
+            exactDuplicateKey: row.exactDuplicateKey,
             duplicateReason: row.duplicateReason,
             version: SkillVersion(row.version),
             bumpFrom: row.bumpFrom,

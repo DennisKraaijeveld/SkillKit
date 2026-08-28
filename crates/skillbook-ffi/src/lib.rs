@@ -133,6 +133,7 @@ pub struct FfiSkillRow {
     pub source_category: Option<String>,
     pub placements: Vec<FfiSkillPlacement>,
     pub duplicate_key: String,
+    pub exact_duplicate_key: String,
     pub duplicate_reason: String,
     pub version: FfiVersion,
     pub bump_from: Option<String>,
@@ -1204,6 +1205,7 @@ fn skill_row(skill: &Skill) -> FfiSkillRow {
             })
             .collect(),
         duplicate_key: skill.duplicate_key(),
+        exact_duplicate_key: skill.exact_duplicate_key(),
         duplicate_reason: skill.duplicate_reason().into(),
         version: match skill.version {
             VersionStatus::Unknown => FfiVersion::Unknown,
@@ -1425,6 +1427,7 @@ mod tests {
         assert_eq!(row.placements.len(), 1);
         assert_eq!(row.placements[0].scope, FfiScope::Global);
         assert!(row.duplicate_key.starts_with("skills-cli:"));
+        assert!(row.exact_duplicate_key.ends_with(":fixture-a"));
         assert_eq!(row.duplicate_reason, "Same skills.sh source");
         assert_eq!(row.bump_from.as_deref(), Some("1.2.3"));
         assert_eq!(row.bump_to.as_deref(), Some("1.2.5"));

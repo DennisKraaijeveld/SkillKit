@@ -170,6 +170,7 @@ struct SkillRow: Identifiable, Hashable {
     var sourceCategory: String?
     var placements: [SkillPlacement]
     var duplicateKey: String
+    var exactDuplicateKey: String
     var duplicateReason: String
     var version: SkillVersion
     var bumpFrom: String?
@@ -580,6 +581,7 @@ final class PreviewBackend: SkillbookBackend {
                 ),
             ],
             duplicateKey: "skills-cli:vercel-labs/agent-skills:frontend-design",
+            exactDuplicateKey: "skills-cli:vercel-labs/agent-skills:frontend-design:preview-demo",
             duplicateReason: "Same skills.sh source",
             version: .updateAvailable,
             bumpFrom: "1.2.3",
@@ -730,6 +732,7 @@ final class PreviewBackend: SkillbookBackend {
                 )
             ],
             duplicateKey: "content:\(slug):preview-\(slug)",
+            exactDuplicateKey: "content:\(slug):preview-\(slug):preview-\(slug)",
             duplicateReason: "Identical SKILL.md contents",
             version: .untracked,
             bumpFrom: nil,

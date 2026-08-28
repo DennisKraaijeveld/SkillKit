@@ -18,7 +18,7 @@ struct SidebarView: View {
                             let isExpanded = expansion(
                                 id: location.id,
                                 containsSelected: location.allSkills.contains {
-                                    $0.skill.id == model.selectedId
+                                    $0.contains(skillId: model.selectedId)
                                 }
                             )
                             DisclosureGroup(
@@ -209,7 +209,7 @@ struct SidebarView: View {
             Label {
                 ViewThatFits(in: .horizontal) {
                     Text(duplicateLabel)
-                    Text("Duplicates")
+                    Text("Copies")
                 }
             } icon: {
                 Image(systemName: "square.on.square")
@@ -221,20 +221,20 @@ struct SidebarView: View {
     }
 
     private var resultCountLabel: String {
-        if model.filtered.count == model.skills.count {
-            return model.skills.count == 1 ? "1 skill" : "\(model.skills.count) skills"
+        if model.visibleSkillCount == model.librarySkillCount {
+            return model.librarySkillCount == 1 ? "1 skill" : "\(model.librarySkillCount) skills"
         }
-        return "\(model.filtered.count) of \(model.skills.count)"
+        return "\(model.visibleSkillCount) of \(model.librarySkillCount)"
     }
 
     private var duplicateHelp: String {
         let count = model.duplicateCopyCount
-        return count == 1 ? "Review 1 duplicate copy" : "Review \(count) duplicate copies"
+        return count == 1 ? "Review 1 extra copy" : "Review \(count) extra copies"
     }
 
     private var duplicateLabel: String {
         let count = model.duplicateCopyCount
-        return count == 1 ? "1 duplicate" : "\(count) duplicates"
+        return count == 1 ? "1 extra copy" : "\(count) extra copies"
     }
 
     @ViewBuilder
@@ -254,7 +254,7 @@ struct SidebarView: View {
                     let categoryExpanded = expansion(
                         id: category.id,
                         containsSelected: category.skills.contains {
-                            $0.skill.id == model.selectedId
+                            $0.contains(skillId: model.selectedId)
                         }
                     )
                     DisclosureGroup(
@@ -300,11 +300,17 @@ struct SidebarView: View {
     }
 
     private func skillRow(_ item: SidebarSkillItem) -> some View {
-        SkillRowView(
-            row: item.skill,
+        let displayedSkill = item.copies.first { $0.id == model.selectedId } ?? item.skill
+        let displayedPath = displayedSkill.placements
+            .first { !$0.isSymlink }?.path ?? displayedSkill.folder
+        return SkillRowView(
+            row: displayedSkill,
             agents: item.agents,
             linked: item.isLinked,
-            placementPath: item.placementPath
+            placementPath: displayedPath,
+            copyCount: item.copyCount,
+            modifiedAt: item.latestModifiedAt,
+            representsSelectedSkill: item.contains(skillId: model.selectedId)
         )
         .contentShape(Rectangle())
         .onTapGesture {
@@ -352,9 +358,9 @@ struct SidebarView: View {
     }
 
     private func containsSelected(_ collection: SidebarCollectionGroup) -> Bool {
-        collection.skills.contains { $0.skill.id == model.selectedId }
+        collection.skills.contains { $0.contains(skillId: model.selectedId) }
             || collection.categories.contains { category in
-                category.skills.contains { $0.skill.id == model.selectedId }
+                category.skills.contains { $0.contains(skillId: model.selectedId) }
             }
     }
 
@@ -520,17 +526,26 @@ struct SkillRowView: View {
     let agents: [String]
     let linked: Bool
     let placementPath: String
+    let copyCount: Int
+    let modifiedAt: Date?
+    let representsSelectedSkill: Bool
 
     init(
         row: SkillRow,
         agents: [String]? = nil,
         linked: Bool = false,
-        placementPath: String? = nil
+        placementPath: String? = nil,
+        copyCount: Int = 1,
+        modifiedAt: Date? = nil,
+        representsSelectedSkill: Bool = false
     ) {
         self.row = row
         self.agents = agents ?? row.agents
         self.linked = linked
         self.placementPath = placementPath ?? row.folder
+        self.copyCount = copyCount
+        self.modifiedAt = modifiedAt ?? row.modifiedAt
+        self.representsSelectedSkill = representsSelectedSkill
     }
 
     var body: some View {
@@ -548,7 +563,7 @@ struct SkillRowView: View {
                         .help("Linked to the shared skill")
                         .accessibilityLabel("Linked skill")
                 }
-                if model.selectedId == row.id && model.dirty {
+                if representsSelectedSkill && model.dirty {
                     Image(systemName: "circle.fill")
                         .font(.system(size: 6))
                         .foregroundStyle(.secondary)
@@ -599,7 +614,7 @@ struct SkillRowView: View {
 
     @ViewBuilder
     private var metadata: some View {
-        if !placementNames.isEmpty || row.modifiedAt != nil {
+        if !placementNames.isEmpty || copyCount > 1 || modifiedAt != nil {
             HStack(spacing: 7) {
                 if !placementNames.isEmpty {
                     ToolLogoCluster(
@@ -609,11 +624,23 @@ struct SkillRowView: View {
                         showsOverflowCount: true
                     )
                 }
-                if !placementNames.isEmpty, row.modifiedAt != nil {
+                if !placementNames.isEmpty, copyCount > 1 || modifiedAt != nil {
                     Text("·")
                         .foregroundStyle(.quaternary)
                 }
-                if let modifiedAt = row.modifiedAt {
+                if copyCount > 1 {
+                    Label("\(copyCount) copies", systemImage: "square.on.square")
+                        .font(.caption2)
+                        .foregroundStyle(.tertiary)
+                        .lineLimit(1)
+                        .help("\(copyCount) identical independent copies")
+                        .accessibilityLabel("\(copyCount) identical copies")
+                }
+                if copyCount > 1, modifiedAt != nil {
+                    Text("·")
+                        .foregroundStyle(.quaternary)
+                }
+                if let modifiedAt {
                     (Text("Edited ") + Text(modifiedAt, style: .relative))
                         .font(.caption2)
                         .foregroundStyle(.tertiary)

@@ -3,9 +3,20 @@ import Foundation
 struct SidebarSkillItem: Identifiable, Hashable {
     var id: String
     var skill: SkillRow
+    var copies: [SkillRow]
     var agents: [String]
     var isLinked: Bool
-    var placementPath: String
+
+    var copyCount: Int { copies.count }
+
+    var latestModifiedAt: Date? {
+        copies.compactMap(\.modifiedAt).max()
+    }
+
+    func contains(skillId: String?) -> Bool {
+        guard let skillId else { return false }
+        return copies.contains { $0.id == skillId }
+    }
 }
 
 struct SidebarCategoryGroup: Identifiable, Hashable {
@@ -84,9 +95,9 @@ enum SidebarTree {
                 let item = SidebarSkillItem(
                     id: "\(location.id)::\(skill.id)",
                     skill: skill,
+                    copies: [skill],
                     agents: agents,
-                    isLinked: links.allSatisfy(\.isSymlink),
-                    placementPath: links.sorted { $0.path < $1.path }[0].path
+                    isLinked: links.allSatisfy(\.isSymlink)
                 )
                 locations[location, default: []].append(item)
             }
@@ -96,14 +107,15 @@ enum SidebarTree {
             let scopedLocations = locations
                 .filter { $0.key.scope == scope }
                 .map { key, items in
-                    SidebarLocationGroup(
+                    let collapsed = collapseExactCopies(items, locationId: key.id)
+                    return SidebarLocationGroup(
                         id: key.id,
                         title: key.title,
                         path: key.path,
                         scope: scope,
-                        skills: scope == .global ? [] : items.sorted(by: skillOrder),
+                        skills: scope == .global ? [] : collapsed.sorted(by: skillOrder),
                         collections: scope == .global
-                            ? collections(for: items, locationId: key.id)
+                            ? collections(for: collapsed, locationId: key.id)
                             : []
                     )
                 }
@@ -140,15 +152,15 @@ enum SidebarTree {
     static func firstItem(for skillId: String, in sections: [SidebarSectionGroup]) -> SidebarSkillItem? {
         for section in sections {
             for location in section.locations {
-                if let item = location.skills.first(where: { $0.skill.id == skillId }) {
+                if let item = location.skills.first(where: { $0.contains(skillId: skillId) }) {
                     return item
                 }
                 for collection in location.collections {
-                    if let item = collection.skills.first(where: { $0.skill.id == skillId }) {
+                    if let item = collection.skills.first(where: { $0.contains(skillId: skillId) }) {
                         return item
                     }
                     for category in collection.categories {
-                        if let item = category.skills.first(where: { $0.skill.id == skillId }) {
+                        if let item = category.skills.first(where: { $0.contains(skillId: skillId) }) {
                             return item
                         }
                     }
@@ -156,6 +168,31 @@ enum SidebarTree {
             }
         }
         return nil
+    }
+
+    private static func collapseExactCopies(
+        _ items: [SidebarSkillItem],
+        locationId: String
+    ) -> [SidebarSkillItem] {
+        Dictionary(grouping: items) { item in
+            item.skill.exactDuplicateKey.isEmpty
+                ? "skill:\(item.skill.id)"
+                : item.skill.exactDuplicateKey
+        }
+        .map { exactKey, matchingItems in
+            guard matchingItems.count > 1 else { return matchingItems[0] }
+            let ordered = matchingItems.sorted(by: preferredCopyOrder)
+            let primary = ordered[0]
+            let copies = ordered.flatMap(\.copies)
+            let agents = Array(Set(ordered.flatMap(\.agents))).sorted()
+            return SidebarSkillItem(
+                id: "\(locationId)::exact::\(exactKey)",
+                skill: primary.skill,
+                copies: copies,
+                agents: agents,
+                isLinked: ordered.allSatisfy(\.isLinked)
+            )
+        }
     }
 
     private static func collections(
@@ -210,7 +247,23 @@ enum SidebarTree {
     }
 
     private static func skillOrder(_ lhs: SidebarSkillItem, _ rhs: SidebarSkillItem) -> Bool {
-        lhs.skill.name.localizedCaseInsensitiveCompare(rhs.skill.name) == .orderedAscending
+        let names = lhs.skill.name.localizedCaseInsensitiveCompare(rhs.skill.name)
+        return names == .orderedSame
+            ? lhs.skill.folder < rhs.skill.folder
+            : names == .orderedAscending
+    }
+
+    private static func preferredCopyOrder(_ lhs: SidebarSkillItem, _ rhs: SidebarSkillItem) -> Bool {
+        let lhsRank = copyRank(lhs)
+        let rhsRank = copyRank(rhs)
+        return lhsRank == rhsRank
+            ? lhs.skill.folder < rhs.skill.folder
+            : lhsRank < rhsRank
+    }
+
+    private static func copyRank(_ item: SidebarSkillItem) -> Int {
+        if !item.isLinked, item.agents.contains("agents") { return 0 }
+        return item.isLinked ? 2 : 1
     }
 
     private static func displayName(_ value: String) -> String {

@@ -2003,6 +2003,7 @@ public struct FfiSkillRow: Equatable, Hashable {
     public var sourceCategory: String?
     public var placements: [FfiSkillPlacement]
     public var duplicateKey: String
+    public var exactDuplicateKey: String
     public var duplicateReason: String
     public var version: FfiVersion
     public var bumpFrom: String?
@@ -2016,7 +2017,7 @@ public struct FfiSkillRow: Equatable, Hashable {
 
     // Default memberwise initializers are never public by default, so we
     // declare one manually.
-    public init(id: String, name: String, description: String, scope: FfiScope, agents: [String], path: String, npx: Bool, sourceLabel: String, sourceKind: String, collectionId: String, collectionLabel: String, sourceCategory: String?, placements: [FfiSkillPlacement], duplicateKey: String, duplicateReason: String, version: FfiVersion, bumpFrom: String?, bumpTo: String?, folder: String, skillMd: String, githubUrl: String?, npxInstall: String?, versionError: String?, modifiedAtUnixSeconds: UInt64?) {
+    public init(id: String, name: String, description: String, scope: FfiScope, agents: [String], path: String, npx: Bool, sourceLabel: String, sourceKind: String, collectionId: String, collectionLabel: String, sourceCategory: String?, placements: [FfiSkillPlacement], duplicateKey: String, exactDuplicateKey: String, duplicateReason: String, version: FfiVersion, bumpFrom: String?, bumpTo: String?, folder: String, skillMd: String, githubUrl: String?, npxInstall: String?, versionError: String?, modifiedAtUnixSeconds: UInt64?) {
         self.id = id
         self.name = name
         self.description = description
@@ -2031,6 +2032,7 @@ public struct FfiSkillRow: Equatable, Hashable {
         self.sourceCategory = sourceCategory
         self.placements = placements
         self.duplicateKey = duplicateKey
+        self.exactDuplicateKey = exactDuplicateKey
         self.duplicateReason = duplicateReason
         self.version = version
         self.bumpFrom = bumpFrom
@@ -2073,6 +2075,7 @@ public struct FfiConverterTypeFfiSkillRow: FfiConverterRustBuffer {
                 sourceCategory: FfiConverterOptionString.read(from: &buf),
                 placements: FfiConverterSequenceTypeFfiSkillPlacement.read(from: &buf),
                 duplicateKey: FfiConverterString.read(from: &buf),
+                exactDuplicateKey: FfiConverterString.read(from: &buf),
                 duplicateReason: FfiConverterString.read(from: &buf),
                 version: FfiConverterTypeFfiVersion.read(from: &buf),
                 bumpFrom: FfiConverterOptionString.read(from: &buf),
@@ -2101,6 +2104,7 @@ public struct FfiConverterTypeFfiSkillRow: FfiConverterRustBuffer {
         FfiConverterOptionString.write(value.sourceCategory, into: &buf)
         FfiConverterSequenceTypeFfiSkillPlacement.write(value.placements, into: &buf)
         FfiConverterString.write(value.duplicateKey, into: &buf)
+        FfiConverterString.write(value.exactDuplicateKey, into: &buf)
         FfiConverterString.write(value.duplicateReason, into: &buf)
         FfiConverterTypeFfiVersion.write(value.version, into: &buf)
         FfiConverterOptionString.write(value.bumpFrom, into: &buf)

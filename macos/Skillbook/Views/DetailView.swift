@@ -94,9 +94,16 @@ struct SkillLocationsButton: View {
     }
 
     private var locationCountLabel: String {
-        let count = skill.placements.count
+        let count = model.identicalCopies(of: skill).reduce(0) { $0 + $1.placements.count }
         return count == 1 ? "1 location" : "\(count) locations"
     }
+}
+
+private struct SkillLocationItem: Identifiable, Hashable {
+    let skill: SkillRow
+    let placement: SkillPlacement
+
+    var id: String { "\(skill.id)::\(placement.path)" }
 }
 
 private struct SkillLocationsPopover: View {
@@ -111,7 +118,7 @@ private struct SkillLocationsPopover: View {
                     .font(.headline)
                 Text(locationSummary)
                     .font(.callout.weight(.medium))
-                Text("Linked locations share edits; installed copies are separate.")
+                Text(locationExplanation)
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -119,7 +126,7 @@ private struct SkillLocationsPopover: View {
 
             Divider()
 
-            if sortedPlacements.isEmpty {
+            if sortedLocations.isEmpty {
                 ContentUnavailableView(
                     "No locations found",
                     systemImage: "folder.badge.questionmark",
@@ -129,9 +136,9 @@ private struct SkillLocationsPopover: View {
             } else {
                 ScrollView {
                     LazyVStack(alignment: .leading, spacing: 0) {
-                        ForEach(sortedPlacements, id: \.self) { placement in
-                            locationRow(placement)
-                            if placement != sortedPlacements.last { Divider() }
+                        ForEach(sortedLocations) { location in
+                            locationRow(location)
+                            if location != sortedLocations.last { Divider() }
                         }
                     }
                 }
@@ -155,8 +162,8 @@ private struct SkillLocationsPopover: View {
     }
 
     private var locationSummary: String {
-        let sourceCount = skill.placements.count { !$0.isSymlink }
-        let linkedCount = skill.placements.count(where: \.isSymlink)
+        let sourceCount = sortedLocations.count { !$0.placement.isSymlink }
+        let linkedCount = sortedLocations.count { $0.placement.isSymlink }
         if sourceCount == 0 && linkedCount == 0 {
             return "No locations found"
         }
@@ -165,15 +172,35 @@ private struct SkillLocationsPopover: View {
         return "\(source) · \(linked)"
     }
 
-    private var sortedPlacements: [SkillPlacement] {
-        skill.placements.sorted {
-            if $0.scope != $1.scope { return $0.scope < $1.scope }
-            return $0.path < $1.path
+    private var locationExplanation: String {
+        if identicalCopies.count > 1 {
+            return "Independent copies are identical now but are edited separately. Linked locations share edits."
         }
+        return "Linked locations share edits; installed copies are separate."
     }
 
-    private func locationRow(_ placement: SkillPlacement) -> some View {
-        HStack(alignment: .top, spacing: 10) {
+    private var identicalCopies: [SkillRow] {
+        model.identicalCopies(of: skill)
+    }
+
+    private var sortedLocations: [SkillLocationItem] {
+        identicalCopies
+            .flatMap { copy in
+                copy.placements.map { SkillLocationItem(skill: copy, placement: $0) }
+            }
+            .sorted { lhs, rhs in
+                if lhs.skill.id == model.selectedId, rhs.skill.id != model.selectedId { return true }
+                if rhs.skill.id == model.selectedId, lhs.skill.id != model.selectedId { return false }
+                if lhs.placement.scope != rhs.placement.scope {
+                    return lhs.placement.scope < rhs.placement.scope
+                }
+                return lhs.placement.path < rhs.placement.path
+            }
+    }
+
+    private func locationRow(_ location: SkillLocationItem) -> some View {
+        let placement = location.placement
+        return HStack(alignment: .top, spacing: 10) {
             Image(systemName: placement.isSymlink ? "link" : "folder")
                 .foregroundStyle(.secondary)
                 .frame(width: 18)
@@ -182,9 +209,9 @@ private struct SkillLocationsPopover: View {
                 HStack(spacing: 6) {
                     Text(locationTitle(placement))
                         .font(.callout.weight(.medium))
-                    Text(placement.isSymlink ? "Linked" : "Source")
+                    Text(locationState(location))
                         .font(.caption2)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(location.skill.id == model.selectedId && !placement.isSymlink ? .primary : .secondary)
                 }
                 Text(placement.path)
                     .font(.system(.caption, design: .monospaced))
@@ -194,13 +221,26 @@ private struct SkillLocationsPopover: View {
                     .textSelection(.enabled)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
-            Button("Open in Finder") { model.revealInFinder(skill, path: placement.path) }
+            if !placement.isSymlink, location.skill.id != model.selectedId {
+                Button("Edit") {
+                    dismiss()
+                    model.select(location.skill.id)
+                }
+                .controlSize(.small)
+                .help("Edit this independent copy")
+            }
+            Button("Open in Finder") { model.revealInFinder(location.skill, path: placement.path) }
                 .controlSize(.small)
                 .help("Open \(locationTitle(placement)) in Finder")
                 .accessibilityLabel("Open in Finder — \(locationTitle(placement))")
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 10)
+    }
+
+    private func locationState(_ location: SkillLocationItem) -> String {
+        if location.placement.isSymlink { return "Linked" }
+        return location.skill.id == model.selectedId ? "Editing" : "Copy"
     }
 
     private func locationTitle(_ placement: SkillPlacement) -> String {
