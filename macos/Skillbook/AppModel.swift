@@ -94,6 +94,7 @@ final class AppModel {
     private var searchTextById: [String: String] = [:]
     private var fullSidebarSections: [SidebarSectionGroup] = []
     private var progressTask: Task<Void, Never>?
+    private var updateCancellationRequested = false
     private static let relativeDateFormatter: RelativeDateTimeFormatter = {
         let formatter = RelativeDateTimeFormatter()
         formatter.unitsStyle = .short
@@ -363,19 +364,34 @@ final class AppModel {
         fetchUpdates()
     }
 
+    func startSelectedUpdates(_ ids: [String]) {
+        guard !ids.isEmpty, !updating else { return }
+        showUpdateSheet = false
+        Task { _ = await applySelectedUpdates(ids) }
+    }
+
     func applySelectedUpdates(_ ids: [String]) async -> [UpdateResult] {
         guard !ids.isEmpty else { return [] }
+        updateCancellationRequested = false
         updating = true
-        defer { updating = false }
+        defer {
+            updating = false
+            updateCancellationRequested = false
+        }
         do {
             let results = try await backend.applyUpdates(ids: ids)
             applyUpdateResults(results)
-            if let selectedId, ids.contains(selectedId) {
+            if let selectedId, ids.contains(selectedId), !dirty {
                 loadSelected(force: true)
             }
+            reportUpdateCompletion(results, requestedCount: ids.count)
             return results
         } catch {
-            self.error = error.localizedDescription
+            if updateCancellationRequested {
+                flash("Update stopped")
+            } else {
+                self.error = error.localizedDescription
+            }
             return []
         }
     }
@@ -400,6 +416,7 @@ final class AppModel {
     }
 
     func cancelJob() {
+        if updating { updateCancellationRequested = true }
         backend.cancelJob()
     }
 
@@ -845,6 +862,27 @@ final class AppModel {
         }
         skills = updatedSkills
         updateChanges.removeAll { succeeded.contains($0.skillId) }
+    }
+
+    private func reportUpdateCompletion(_ results: [UpdateResult], requestedCount: Int) {
+        let successfulCount = results.count(where: \.ok)
+        if updateCancellationRequested {
+            let suffix = successfulCount > 0 ? " · \(successfulCount) updated" : ""
+            flash("Update stopped\(suffix)")
+            return
+        }
+        let failures = results.filter { !$0.ok }
+        if let firstFailure = failures.first {
+            self.error = failures.count == 1
+                ? firstFailure.message
+                : "\(failures.count) updates failed. \(firstFailure.message)"
+            return
+        }
+        guard results.count == requestedCount else {
+            self.error = "The update ended before every selected skill returned a result."
+            return
+        }
+        flash(successfulCount == 1 ? "1 skill updated" : "\(successfulCount) skills updated")
     }
 
     /// Disk scan only. Remote checks run explicitly, not on launch or reload.

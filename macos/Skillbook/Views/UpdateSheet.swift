@@ -9,12 +9,8 @@ struct UpdateSheet: View {
     @State private var selected: Set<String> = []
     @State private var focusedId: String?
     @State private var selectedFile: String?
-    @State private var outcomes: [String: UpdateResult] = [:]
-    @State private var cancelled: Set<String> = []
     @State private var diffCache: [DiffRequest: UpdateFileDiff] = [:]
     @State private var diffErrors: [DiffRequest: String] = [:]
-    @State private var applying = false
-    @State private var cancelRequested = false
     @State private var pickingNpx = false
     @State private var checkingRuntime = false
 
@@ -37,7 +33,6 @@ struct UpdateSheet: View {
         }
         .frame(width: 1_000, height: 660)
         .background(SkillbookTheme.surface(.two))
-        .interactiveDismissDisabled(applying)
         .onAppear(perform: prepare)
         .onChange(of: focusedId) { _, _ in selectFirstFile() }
         .task(id: activeDiffRequest) {
@@ -75,15 +70,6 @@ struct UpdateSheet: View {
                 .menuStyle(.borderlessButton)
                 .fixedSize()
                 .help("Some skills could not be checked. Available updates are still safe to review.")
-            }
-            if applying || model.updating {
-                ProgressView()
-                    .controlSize(.small)
-                Button(cancelRequested ? "Stopping…" : "Stop") {
-                    cancelRequested = true
-                    model.cancelJob()
-                }
-                .disabled(cancelRequested)
             }
         }
         .padding(.horizontal, 20)
@@ -138,7 +124,7 @@ struct UpdateSheet: View {
                 }
                 .menuStyle(.borderlessButton)
                 .fixedSize()
-                .disabled(applying)
+                .disabled(model.updating)
             }
             .padding(.horizontal, 12)
             .frame(height: 38)
@@ -150,9 +136,7 @@ struct UpdateSheet: View {
                             UpdateSelectionRow(
                                 change: change,
                                 selected: binding(for: change.skillId),
-                                outcome: outcomes[change.skillId],
-                                cancelled: cancelled.contains(change.skillId),
-                                disabled: applying,
+                                disabled: model.updating,
                                 unavailable: !isActionable(change)
                             )
                             .tag(change.skillId)
@@ -221,12 +205,6 @@ struct UpdateSheet: View {
                     .font(.caption)
                     .foregroundStyle(.red)
             }
-            if let outcome = outcomes[change.skillId], !outcome.ok {
-                Label(outcome.message, systemImage: "xmark.circle.fill")
-                    .font(.caption)
-                    .foregroundStyle(.red)
-                    .textSelection(.enabled)
-            }
         }
         .padding(16)
     }
@@ -285,12 +263,11 @@ struct UpdateSheet: View {
             Spacer()
             Button("Close") { dismiss() }
                 .keyboardShortcut(.cancelAction)
-                .disabled(applying)
             Button(primaryLabel) {
-                Task { await apply() }
+                model.startSelectedUpdates(actionableIds)
             }
             .keyboardShortcut(.defaultAction)
-            .disabled(actionableIds.isEmpty || applying || model.updating)
+            .disabled(actionableIds.isEmpty || model.updating)
         }
         .padding(.horizontal, 16)
         .frame(height: 58)
@@ -301,12 +278,6 @@ struct UpdateSheet: View {
         if selectedLocalCount > 0 {
             Label(localSelectionMessage, systemImage: "exclamationmark.triangle")
                 .foregroundStyle(.orange)
-        } else if failedCount > 0 {
-            Label(failureMessage, systemImage: "xmark.circle")
-                .foregroundStyle(.red)
-        } else if successfulCount > 0, actionableIds.isEmpty {
-            Label(successMessage, systemImage: "checkmark.circle")
-                .foregroundStyle(.green)
         } else {
             Text("Only selected skills will be updated.")
                 .foregroundStyle(.secondary)
@@ -351,7 +322,7 @@ struct UpdateSheet: View {
         candidates
             .filter(isActionable)
             .map(\.skillId)
-            .filter { selected.contains($0) && outcomes[$0]?.ok != true }
+            .filter { selected.contains($0) }
     }
 
     private var unavailableNpxCount: Int {
@@ -369,22 +340,8 @@ struct UpdateSheet: View {
             : "\(selectedLocalCount) selected skills have local edits"
     }
 
-    private var successfulCount: Int { outcomes.values.filter(\.ok).count }
-    private var failedCount: Int { outcomes.values.filter { !$0.ok }.count }
-
-    private var successMessage: String {
-        successfulCount == 1 ? "1 skill updated" : "\(successfulCount) skills updated"
-    }
-
-    private var failureMessage: String {
-        failedCount == 1 ? "1 update failed" : "\(failedCount) updates failed"
-    }
-
     private var primaryLabel: String {
         let count = actionableIds.count
-        if failedCount > 0, count > 0 {
-            return count == 1 ? "Retry Update" : "Retry \(count) Updates"
-        }
         return count == 1 ? "Update Skill" : "Update \(count) Skills"
     }
 
@@ -450,37 +407,6 @@ struct UpdateSheet: View {
         }
     }
 
-    private func apply() async {
-        let chosenIds = actionableIds
-        guard !chosenIds.isEmpty else { return }
-        applying = true
-        cancelRequested = false
-        cancelled.subtract(chosenIds)
-        let results = await model.applySelectedUpdates(chosenIds)
-        for result in results {
-            outcomes[result.skillId] = result
-        }
-        let returned = Set(results.map(\.skillId))
-        let missing = Set(chosenIds).subtracting(returned)
-        if cancelRequested {
-            cancelled.formUnion(missing)
-        } else {
-            for id in missing {
-                let name = candidates.first { $0.skillId == id }?.name ?? id
-                outcomes[id] = UpdateResult(
-                    skillId: id,
-                    name: name,
-                    ok: false,
-                    message: model.error ?? "No result was returned for this skill."
-                )
-            }
-        }
-        applying = false
-        if !results.isEmpty, results.allSatisfy(\.ok), missing.isEmpty {
-            model.flash(successMessage)
-        }
-    }
-
     private func chooseNpx(_ result: Result<URL, Error>) {
         switch result {
         case .success(let url):
@@ -534,8 +460,6 @@ private struct UpdateSourceGroup: Identifiable {
 private struct UpdateSelectionRow: View {
     let change: VersionChange
     @Binding var selected: Bool
-    let outcome: UpdateResult?
-    let cancelled: Bool
     let disabled: Bool
     let unavailable: Bool
 
@@ -544,7 +468,7 @@ private struct UpdateSelectionRow: View {
             Toggle("Update \(change.name)", isOn: $selected)
                 .labelsHidden()
                 .toggleStyle(.checkbox)
-                .disabled(disabled || unavailable || outcome?.ok == true)
+                .disabled(disabled || unavailable)
                 .accessibilityLabel("Update \(change.name)")
             VStack(alignment: .leading, spacing: 3) {
                 HStack(spacing: 5) {
@@ -571,14 +495,6 @@ private struct UpdateSelectionRow: View {
                 Image(systemName: "xmark.circle.fill")
                     .foregroundStyle(.red)
                     .accessibilityLabel("Requires npx")
-            } else if let outcome {
-                Image(systemName: outcome.ok ? "checkmark.circle.fill" : "xmark.circle.fill")
-                    .foregroundStyle(outcome.ok ? .green : .red)
-                    .accessibilityLabel(outcome.ok ? "Updated" : "Update failed")
-            } else if cancelled {
-                Image(systemName: "stop.circle")
-                    .foregroundStyle(.secondary)
-                    .accessibilityLabel("Update stopped")
             }
         }
         .padding(.vertical, 3)

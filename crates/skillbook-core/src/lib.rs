@@ -49,7 +49,7 @@ pub use source::{
 };
 pub use update::{
     UpdateOutcome, UpdateProgress, install_skill, install_skill_with_runtime, install_source,
-    normalize_install_spec, update_all, update_all_with_runtime, update_skill,
-    update_skill_with_runtime,
+    normalize_install_spec, update_all, update_all_with_runtime,
+    update_all_with_runtime_and_cancel, update_skill, update_skill_with_runtime,
 };
 pub use watch::{SkillWatchWaiter, SkillWatcher, event_is_relevant, path_is_relevant};

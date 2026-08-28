@@ -662,6 +662,16 @@ struct PreviewBackendTests {
         #expect(after.skills.first?.version == .upToDate)
     }
 
+    @Test("Applying reviewed updates releases the review sheet")
+    func applyingUpdatesDismissesReview() {
+        let model = AppModel(backend: PreviewBackend())
+        model.showUpdateSheet = true
+
+        model.startSelectedUpdates(["demo"])
+
+        #expect(!model.showUpdateSheet)
+    }
+
     @Test("Creating a skill returns it in the next snapshot")
     func createSkill() async throws {
         let backend = PreviewBackend()

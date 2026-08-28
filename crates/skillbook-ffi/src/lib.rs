@@ -17,9 +17,9 @@ use skillbook_core::{
     discover_projects, global_package_banner, global_package_notices, install_mcp_server,
     install_skill_with_runtime, join_skill_md, link_skill_to_project, mcp_integration_status,
     parse_skill_md, preserve_version_state, preview_update_file as build_update_file_preview,
-    read_skill_file, scan_with_home_and_runtime, scan_with_runtime, update_all_with_runtime,
-    update_skill_with_runtime, validate_skill_frontmatter, version_changes, version_check_errors,
-    well_known_global_skill_dirs, write_skill_file,
+    read_skill_file, scan_with_home_and_runtime, scan_with_runtime,
+    update_all_with_runtime_and_cancel, update_skill_with_runtime, validate_skill_frontmatter,
+    version_changes, version_check_errors, well_known_global_skill_dirs, write_skill_file,
 };
 
 #[derive(Debug, thiserror::Error, uniffi::Error)]
@@ -703,10 +703,15 @@ impl Session {
         let total = skills.len() as u32;
         self.set_progress(0, total, "", "update");
         let runtime = self.lock_runtime();
-        let outcomes = update_all_with_runtime(&skills, &runtime, |p| {
-            self.set_progress(p.done as u32, p.total as u32, &p.name, "update");
-            !self.cancel.load(Ordering::SeqCst)
-        });
+        let outcomes = update_all_with_runtime_and_cancel(
+            &skills,
+            &runtime,
+            |p| {
+                self.set_progress(p.done as u32, p.total as u32, &p.name, "update");
+                true
+            },
+            || !self.cancel.load(Ordering::SeqCst),
+        );
         drop(runtime);
         let updated_ids: Vec<String> = outcomes
             .iter()
