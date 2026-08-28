@@ -36,7 +36,10 @@ jobs:
             exit 1
           fi
           version="${GITHUB_REF_NAME#v}"
+          IFS='.' read -r major minor patch <<< "$version"
+          build_version="$((10#$major + 1)).$((10#$minor)).$((10#$patch))"
           echo "VERSION=$version" >> "$GITHUB_ENV"
+          echo "BUILD_VERSION=$build_version" >> "$GITHUB_ENV"
           echo "ARCHIVE_PATH=$RUNNER_TEMP/SkillKit.xcarchive" >> "$GITHUB_ENV"
           echo "APP_PATH=$RUNNER_TEMP/SkillKit.xcarchive/Products/Applications/SkillKit.app" >> "$GITHUB_ENV"
           echo "DMG_PATH=$RUNNER_TEMP/SkillKit-$version.dmg" >> "$GITHUB_ENV"
@@ -145,7 +148,7 @@ jobs:
             ARCHS='arm64 x86_64' \
             ONLY_ACTIVE_ARCH=NO \
             MARKETING_VERSION="$VERSION" \
-            CURRENT_PROJECT_VERSION="$GITHUB_RUN_NUMBER" \
+            CURRENT_PROJECT_VERSION="$BUILD_VERSION" \
             SPARKLE_PUBLIC_ED_KEY="$SPARKLE_PUBLIC_ED_KEY" \
             DEVELOPMENT_TEAM="$APPLE_TEAM_ID" \
             CODE_SIGN_STYLE=Manual \
@@ -159,6 +162,12 @@ jobs:
           "$GITHUB_WORKSPACE/macos/scripts/sign-app-for-distribution.sh" \
             "$APP_PATH" \
             "$SIGNING_IDENTITY"
+          archived_version="$(plutil -extract CFBundleShortVersionString raw -o - "$APP_PATH/Contents/Info.plist")"
+          archived_build="$(plutil -extract CFBundleVersion raw -o - "$APP_PATH/Contents/Info.plist")"
+          if [[ "$archived_version" != "$VERSION" || "$archived_build" != "$BUILD_VERSION" ]]; then
+            echo "The archive version does not match the release tag." >&2
+            exit 1
+          fi
           embedded_key="$(plutil -extract SUPublicEDKey raw -o - "$APP_PATH/Contents/Info.plist")"
           if [[ "$embedded_key" != "$SPARKLE_PUBLIC_ED_KEY" ]]; then
             echo "The app contains the wrong Sparkle public key." >&2

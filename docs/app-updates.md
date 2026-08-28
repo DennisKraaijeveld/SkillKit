@@ -45,6 +45,8 @@ git tag v0.1.0
 git push origin v0.1.0
 ```
 
+The workflow derives the internal bundle build as `(major + 1).minor.patch` from the tag. The offset keeps tag-derived builds newer than the legacy `0.1.0` and `0.1.1` artifacts, which both used build `1`. Sparkle compares this internal build number, not the user-facing version, when deciding whether an update is newer.
+
 `.github/workflows/release.yml` then:
 
 1. Builds a universal arm64/x86_64 Release archive.
